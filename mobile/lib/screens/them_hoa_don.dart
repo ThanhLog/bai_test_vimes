@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:mobile/models/chuKy.dart';
 import 'package:mobile/models/product.dart';
 import 'package:mobile/models/thongTinPhieu.dart';
+import 'package:mobile/screens/scan_hoa_don.dart';
 import 'package:mobile/utils/utils.dart';
 
 class ThemHoaDon extends StatefulWidget {
@@ -181,6 +182,11 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditing ? 'Chỉnh sửa hóa đơn' : 'Thêm hóa đơn'),
+        actions: [
+          IconButton(onPressed: () {
+            Navigator.of(context).push(MaterialPageRoute(builder: (context) => const ScanHoaDon()));
+          }, icon: const Icon(Icons.camera_alt)),
+        ],
       ),
       body: Form(
         key: _formKey,
