@@ -1,9 +1,14 @@
+import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mobile/screens/preview_hoa_don_scan.dart';
 
 class ScanHoaDon extends StatefulWidget {
-  const ScanHoaDon({super.key});
+  const ScanHoaDon({super.key, this.imagePaths});
+
+  final List<File>? imagePaths;
 
   @override
   State<ScanHoaDon> createState() => _ScanHoaDonState();
@@ -62,7 +67,19 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
                         onPressed: () async {
                           try {
                             await _initializeControllerFuture;
-                            final image = await _controller!.takePicture();
+                            final imageFile = await _controller!.takePicture();
+                            final imagePath = [
+                              File(imageFile.path),
+                              ...?widget.imagePaths,
+                            ];
+                            Navigator.push(
+                              // ignore: use_build_context_synchronously
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    PreviewHoaDonScan(imagePaths: imagePath),
+                              ),
+                            );
                             // Handle the captured image (e.g., save or display it)
                           } catch (e) {
                             print(e);
@@ -76,7 +93,10 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
                     bottom: 30,
                     right: 32,
                     child: IconButton(
-                      icon: const Icon(Icons.photo_library, color: Colors.white),
+                      icon: const Icon(
+                        Icons.photo_library,
+                        color: Colors.white,
+                      ),
                       onPressed: _selectImages,
                     ),
                   ),
@@ -114,8 +134,9 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
       await _initializeControllerFuture;
       if (!mounted) return;
 
-      final nextFlashMode =
-          _flashMode == FlashMode.off ? FlashMode.torch : FlashMode.off;
+      final nextFlashMode = _flashMode == FlashMode.off
+          ? FlashMode.torch
+          : FlashMode.off;
       await controller.setFlashMode(nextFlashMode);
 
       if (!mounted) return;
@@ -140,9 +161,9 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
 
       if (!mounted || images.isEmpty) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đã chọn ${images.length} ảnh.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Đã chọn ${images.length} ảnh.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
