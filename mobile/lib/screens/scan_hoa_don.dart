@@ -18,6 +18,7 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
   CameraController? _controller;
   Future<void>? _initializeControllerFuture;
   FlashMode _flashMode = FlashMode.off;
+  bool _isCapturing = false;
 
   @override
   Widget build(BuildContext context) {
@@ -64,27 +65,7 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
                           backgroundColor: Colors.white,
                           foregroundColor: Colors.black,
                         ),
-                        onPressed: () async {
-                          try {
-                            await _initializeControllerFuture;
-                            final imageFile = await _controller!.takePicture();
-                            final imagePath = [
-                              File(imageFile.path),
-                              ...?widget.imagePaths,
-                            ];
-                            Navigator.push(
-                              // ignore: use_build_context_synchronously
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    PreviewHoaDonScan(imagePaths: imagePath),
-                              ),
-                            );
-                            // Handle the captured image (e.g., save or display it)
-                          } catch (e) {
-                            print(e);
-                          }
-                        },
+                        onPressed: _isCapturing ? null : _captureAndPreview,
                         child: const Icon(Icons.camera_alt),
                       ),
                     ),
@@ -124,6 +105,50 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
     await _controller!.setFlashMode(_flashMode);
     if (!mounted) return;
     setState(() {});
+  }
+
+  Future<void> _captureAndPreview() async {
+    final controller = _controller;
+    if (controller == null) return;
+
+    setState(() => _isCapturing = true);
+
+    try {
+      await _initializeControllerFuture;
+      final imageFile = await controller.takePicture();
+      final imagePaths = [File(imageFile.path), ...?widget.imagePaths];
+
+      // ScanHoaDon remains below the preview route, so dispose explicitly to
+      // release the physical camera while the preview is open.
+      await controller.dispose();
+      if (identical(_controller, controller)) {
+        _controller = null;
+        _initializeControllerFuture = null;
+      }
+
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PreviewHoaDonScan(imagePaths: imagePaths),
+        ),
+      );
+
+      // The user returned to the scan page, so acquire the camera again.
+      if (mounted) {
+        await _initializeCamera();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Không thể chụp ảnh. Vui lòng thử lại.')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCapturing = false);
+      }
+    }
   }
 
   Future<void> _toggleFlash() async {

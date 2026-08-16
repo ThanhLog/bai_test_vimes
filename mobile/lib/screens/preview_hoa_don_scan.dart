@@ -9,8 +9,36 @@ class PreviewHoaDonScan extends StatelessWidget {
 
   final List<File> imagePaths;
 
+  Function _handleDeleteImage(BuildContext context, int index) {
+    return () {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Delete Image'),
+          content: Text('Are you sure you want to delete this image?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                imagePaths.removeAt(index);
+                Navigator.of(context).pop();
+              },
+              child: Text('Delete'),
+            ),
+          ],
+        ),
+      );
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
+
     return Scaffold(
       appBar: AppBar(title: Text('Preview Hoá Đơn Scan')),
       body: SingleChildScrollView(
@@ -37,10 +65,23 @@ class PreviewHoaDonScan extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: Colors.black.withValues(alpha: 0.8),
                             ),
-                            child: Image.file(
-                              imagePaths[index],
-                              width: double.infinity,
-                              fit: BoxFit.contain,
+                            child: Stack(
+                              children: [
+                                Center(
+                                  child: Image.file(imagePaths[index]),
+                                ),
+                                Positioned(
+                                  top: 40,
+                                  right: 20,
+                                  child: 
+                                      IconButton(
+                                        icon: Icon(Icons.delete, color: Colors.white),
+                                        onPressed: () {
+                                          _handleDeleteImage(context, index);
+                                        },
+                                      ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
