@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 import 'package:mobile/models/chuKy.dart';
 import 'package:mobile/models/product.dart';
 import 'package:mobile/models/thongTinPhieu.dart';
@@ -38,6 +40,8 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
   final List<_ProductFormData> _products = [];
 
   bool get _isEditing => widget.initialInvoice != null;
+
+
 
   @override
   void initState() {
@@ -133,6 +137,78 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
     });
   }
 
+  Future<void> _selectAndUploadFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'docx', 'doc'],
+        allowMultiple: false,
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final file = File(result.files.single.path!);
+      final fileName = result.files.single.name.toLowerCase();
+
+      if (fileName.endsWith('.pdf')) {
+        await _parsePdfFile(file);
+      } else if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
+        _parseDocFile(file);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File type not supported')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _parsePdfFile(File file) async {
+    try {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã tải file. Vui lòng nhập dữ liệu thủ công hoặc sử dụng scan.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi đọc PDF: $e')),
+        );
+      }
+    }
+  }
+
+  void _parseDocFile(File file) {
+    try {
+      // DOCX parsing được hỗ trợ tốt hơn thông qua external service
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã tải file DOCX. Vui lòng nhập dữ liệu thủ công hoặc sử dụng scan.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi đọc DOC: $e')),
+        );
+      }
+    }
+  }
+
   void _addProduct() {
     setState(() {
       _products.add(_ProductFormData());
@@ -183,9 +259,19 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
       appBar: AppBar(
         title: Text(_isEditing ? 'Chỉnh sửa hóa đơn' : 'Thêm hóa đơn'),
         actions: [
-          IconButton(onPressed: () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (context) => const ScanHoaDon()));
-          }, icon: const Icon(Icons.camera_alt)),
+          IconButton(
+            onPressed: _selectAndUploadFiles,
+            icon: const Icon(Icons.file_upload),
+          ),
+
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const ScanHoaDon()),
+              );
+            },
+            icon: const Icon(Icons.camera_alt),
+          ),
         ],
       ),
       body: Form(

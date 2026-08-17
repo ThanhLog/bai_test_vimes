@@ -19,70 +19,77 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
   Future<void>? _initializeControllerFuture;
   FlashMode _flashMode = FlashMode.off;
   bool _isCapturing = false;
+  bool _isDisposed = false;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SizedBox.expand(
-        child: _controller == null
-            ? const Center(child: CircularProgressIndicator())
-            : Stack(
-                fit: StackFit.expand,
-                children: [
-                  CameraPreview(_controller!),
-                  Positioned(
-                    top: 40,
-                    left: 20,
-                    child: IconButton(
-                      icon: Icon(Icons.arrow_back),
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                    ),
-                  ),
-                  Positioned(
-                    top: 40,
-                    right: 20,
-                    child: IconButton(
-                      icon: Icon(
-                        _flashMode == FlashMode.off
-                            ? Icons.flash_off
-                            : Icons.flash_on,
-                        color: Colors.white,
+    final isReady = !_isDisposed && 
+                    _controller != null && 
+                    (_controller?.value.isInitialized ?? false);
+    
+    return WillPopScope(
+      onWillPop: _onBackPressed,
+      child: Scaffold(
+        body: SizedBox.expand(
+          child: !isReady
+              ? const Center(child: CircularProgressIndicator())
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (_controller != null && _controller!.value.isInitialized)
+                      CameraPreview(_controller!),
+                    Positioned(
+                      top: 40,
+                      left: 20,
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.pop(context),
                       ),
-                      onPressed: _toggleFlash,
                     ),
-                  ),
-                  Positioned(
-                    bottom: 30,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          shape: const CircleBorder(),
-                          padding: const EdgeInsets.all(16),
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
+                    Positioned(
+                      top: 40,
+                      right: 20,
+                      child: IconButton(
+                        icon: Icon(
+                          _flashMode == FlashMode.off
+                              ? Icons.flash_off
+                              : Icons.flash_on,
+                          color: Colors.white,
                         ),
-                        onPressed: _isCapturing ? null : _captureAndPreview,
-                        child: const Icon(Icons.camera_alt),
+                        onPressed: _toggleFlash,
                       ),
                     ),
-                  ),
-                  Positioned(
-                    bottom: 30,
-                    right: 32,
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.photo_library,
-                        color: Colors.white,
+                    Positioned(
+                      bottom: 30,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            shape: const CircleBorder(),
+                            padding: const EdgeInsets.all(16),
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black,
+                          ),
+                          onPressed: _isCapturing ? null : _captureAndPreview,
+                          child: const Icon(Icons.camera_alt),
+                        ),
                       ),
-                      onPressed: _selectImages,
                     ),
-                  ),
-                ],
-              ),
+                    Positioned(
+                      bottom: 30,
+                      right: 32,
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.photo_library,
+                          color: Colors.white,
+                        ),
+                        onPressed: _selectImages,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -90,43 +97,58 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
   @override
   void initState() {
     super.initState();
+    _isDisposed = false;
     _initializeCamera();
   }
 
+  Future<bool> _onBackPressed() async {
+    if (_isDisposed) return true;
+    
+    _isDisposed = true;
+    await _controller?.dispose();
+    _controller = null;
+    _initializeControllerFuture = null;
+    
+    if (mounted) {
+      setState(() {});
+    }
+    
+    return true;
+  }
+
   Future<void> _initializeCamera() async {
+    if (_isDisposed) return;
+    _isDisposed = false;
+    
     final cameras = await availableCameras();
-    if (cameras.isEmpty) return;
+    if (cameras.isEmpty || _isDisposed) return;
     _controller = CameraController(cameras.last, ResolutionPreset.medium);
     _initializeControllerFuture = _controller!.initialize();
 
     await _initializeControllerFuture;
-    if (!mounted) return;
+    if (!mounted || _isDisposed) return;
 
     await _controller!.setFlashMode(_flashMode);
-    if (!mounted) return;
+    if (!mounted || _isDisposed) return;
     setState(() {});
   }
 
   Future<void> _captureAndPreview() async {
     final controller = _controller;
-    if (controller == null) return;
+    if (controller == null || _isDisposed) return;
 
     setState(() => _isCapturing = true);
 
     try {
       await _initializeControllerFuture;
+      if (_isDisposed) return;
+      
       final imageFile = await controller.takePicture();
       final imagePaths = [File(imageFile.path), ...?widget.imagePaths];
 
-      // ScanHoaDon remains below the preview route, so dispose explicitly to
-      // release the physical camera while the preview is open.
-      await controller.dispose();
-      if (identical(_controller, controller)) {
-        _controller = null;
-        _initializeControllerFuture = null;
-      }
-
       if (!mounted) return;
+      
+      // Navigate to preview without disposing camera - camera stays active
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -134,9 +156,9 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
         ),
       );
 
-      // The user returned to the scan page, so acquire the camera again.
+      // Camera remains active when returning to scan page
       if (mounted) {
-        await _initializeCamera();
+        setState(() {});
       }
     } catch (e) {
       if (mounted) {
@@ -178,17 +200,35 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
   }
 
   Future<void> _selectImages() async {
+    final controller = _controller;
+    if (controller == null || _isDisposed) return;
+
     try {
       final images = await ImagePicker().pickMultiImage(
         imageQuality: 85,
         limit: 10,
       );
 
-      if (!mounted || images.isEmpty) return;
+      if (!mounted || images.isEmpty || _isDisposed) return;
 
-      ScaffoldMessenger.of(
+      final imagePaths = [
+        ...images.map((img) => File(img.path)),
+        ...?widget.imagePaths
+      ];
+
+      // Navigate to preview without disposing camera - camera stays active
+      if (!mounted) return;
+      await Navigator.push(
         context,
-      ).showSnackBar(SnackBar(content: Text('Đã chọn ${images.length} ảnh.')));
+        MaterialPageRoute(
+          builder: (context) => PreviewHoaDonScan(imagePaths: imagePaths),
+        ),
+      );
+
+      // Camera remains active when returning to scan page
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -199,6 +239,7 @@ class _ScanHoaDonState extends State<ScanHoaDon> {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _controller?.dispose();
     super.dispose();
   }

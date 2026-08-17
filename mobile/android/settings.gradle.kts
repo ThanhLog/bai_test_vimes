@@ -24,3 +24,15 @@ plugins {
 }
 
 include(":app")
+
+// file_picker 8.x hard-codes API 34. Register this before plugin projects are
+// evaluated so its Android library finishes with the app's API 36 compile SDK.
+gradle.beforeProject {
+    if (name == "file_picker") {
+        afterEvaluate {
+            extensions.configure<com.android.build.api.dsl.LibraryExtension> {
+                compileSdk = 36
+            }
+        }
+    }
+}
