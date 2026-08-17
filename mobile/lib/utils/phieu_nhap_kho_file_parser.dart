@@ -2,6 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:mobile/models/chuKy.dart';
+import 'package:mobile/models/product.dart';
+import 'package:mobile/utils/phieu_nhap_kho_ocr_normalizer.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class ImportedPhieuNhapKho {
@@ -32,38 +36,8 @@ class ImportedPhieuNhapKho {
   final String theo;
   final String tongTien;
   final String soChungTuGoc;
-  final List<ImportedProduct> products;
-  final ImportedChuKy chuKy;
-}
-
-class ImportedProduct {
-  const ImportedProduct({
-    required this.id,
-    required this.name,
-    required this.maSo,
-    required this.thucNhan,
-    required this.donGia,
-  });
-
-  final String id;
-  final String name;
-  final String maSo;
-  final String thucNhan;
-  final String donGia;
-}
-
-class ImportedChuKy {
-  const ImportedChuKy({
-    required this.nguoiLapPhieu,
-    required this.nguoiGiaoHang,
-    required this.thuKho,
-    required this.keToanTruong,
-  });
-
-  final String nguoiLapPhieu;
-  final String nguoiGiaoHang;
-  final String thuKho;
-  final String keToanTruong;
+  final List<Product> products;
+  final ChuKy chuKy;
 }
 
 /// Extracts the fields used by the VIMES "Phiếu nhập kho" template.
@@ -82,6 +56,69 @@ class PhieuNhapKhoFileParser {
       );
     }
     return _fromText(text);
+  }
+
+  static ImportedPhieuNhapKho parseText(String text) {
+    if (text.trim().isEmpty) {
+      throw const FormatException('Không nhận diện được nội dung hóa đơn.');
+    }
+
+    return _fromText(text);
+  }
+
+  static Future<ImportedPhieuNhapKho> parseImages(List<File> images) async {
+    if (images.isEmpty) {
+      throw const FormatException('Không có ảnh hóa đơn để scan.');
+    }
+
+    final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+
+    try {
+      final pages = <String>[];
+
+      for (var i = 0; i < images.length; i++) {
+        final image = images[i];
+
+        if (!await image.exists()) {
+          continue;
+        }
+
+        final inputImage = InputImage.fromFile(image);
+
+        final recognizedText = await recognizer.processImage(inputImage);
+
+        final rawText = recognizedText.text.trim();
+
+        if (rawText.isEmpty) {
+          continue;
+        }
+
+        // Normalize riêng từng page.
+        final normalizedText = PhieuNhapKhoOcrNormalizer.normalize(rawText);
+
+        if (normalizedText.trim().isEmpty) {
+          continue;
+        }
+
+        pages.add('''
+========== TRANG ${i + 1} ==========
+
+$normalizedText
+''');
+      }
+
+      if (pages.isEmpty) {
+        throw const FormatException(
+          'OCR không nhận diện được nội dung hóa đơn.',
+        );
+      }
+
+      final rawText = pages.join('\n');
+
+      return _fromText(rawText);
+    } finally {
+      await recognizer.close();
+    }
   }
 
   static Future<String> _pdfText(File file) async {
@@ -189,10 +226,7 @@ class PhieuNhapKhoFileParser {
     return values.isEmpty ? '' : values.last;
   }
 
-  static List<ImportedProduct> _findProducts(
-    List<String> lines,
-    String allText,
-  ) {
+  static List<Product> _findProducts(List<String> lines, String allText) {
     // PDF text extraction splits the "STT" heading into two lines, while
     // DOCX keeps it intact. Only use the layout-based parser for that PDF form.
     if (lines.contains('ST') && lines.contains('T')) {
@@ -200,7 +234,7 @@ class PhieuNhapKhoFileParser {
       if (layoutProducts.isNotEmpty) return layoutProducts;
     }
 
-    final products = <ImportedProduct>[];
+    final products = <Product>[];
     final tableStart = lines.indexWhere((line) => line == 'Thực nhập');
     if (tableStart == -1) return products;
 
@@ -216,7 +250,7 @@ class PhieuNhapKhoFileParser {
         continue;
       }
       products.add(
-        ImportedProduct(
+        Product(
           id: lines[index],
           name: row[0],
           maSo: row[1],
@@ -229,7 +263,7 @@ class PhieuNhapKhoFileParser {
     return products;
   }
 
-  static List<ImportedProduct> _findLayoutProducts(String text) {
+  static List<Product> _findLayoutProducts(String text) {
     final rowPattern = RegExp(
       r'^\s*(\d+)\s+(.+?)\s+([A-Z]{1,6}-\d\s*\d+)\s+(\S+)\s+'
       r'(\d[\d.,]*)\s+(\d[\d.,]*)\s+(\d[\d.,]*)\s+(\d[\d.,]*)\s*'
@@ -239,7 +273,7 @@ class PhieuNhapKhoFileParser {
     );
 
     return rowPattern.allMatches(text).map((match) {
-      return ImportedProduct(
+      return Product(
         id: match.group(1)!,
         name: match.group(2)!.replaceAll(RegExp(r'\s+'), ' ').trim(),
         maSo: match.group(3)!.replaceAll(RegExp(r'\s+'), ''),
@@ -249,12 +283,12 @@ class PhieuNhapKhoFileParser {
     }).toList();
   }
 
-  static ImportedChuKy _findSignatures(List<String> lines) {
+  static ChuKy _findSignatures(List<String> lines) {
     for (var index = lines.length - 1; index >= 0; index--) {
       if (!lines[index].contains('Kế toán trưởng')) continue;
       final names = _signatureNames(lines.skip(index + 1));
       if (names.length >= 4) {
-        return ImportedChuKy(
+        return ChuKy(
           nguoiLapPhieu: names[0],
           nguoiGiaoHang: names[1],
           thuKho: names[2],
@@ -263,7 +297,7 @@ class PhieuNhapKhoFileParser {
       }
     }
 
-    return const ImportedChuKy(
+    return const ChuKy(
       nguoiLapPhieu: '',
       nguoiGiaoHang: '',
       thuKho: '',

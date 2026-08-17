@@ -175,46 +175,46 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
     }
   }
 
-  Future<void> _parsePdfFile(File file) async {
-    try {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Đã tải file. Vui lòng nhập dữ liệu thủ công hoặc sử dụng scan.',
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Lỗi đọc PDF: $e')));
-      }
-    }
-  }
+  // Future<void> _parsePdfFile(File file) async {
+  //   try {
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(
+  //           content: Text(
+  //             'Đã tải file. Vui lòng nhập dữ liệu thủ công hoặc sử dụng scan.',
+  //           ),
+  //         ),
+  //       );
+  //     }
+  //   } catch (e) {
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(
+  //         context,
+  //       ).showSnackBar(SnackBar(content: Text('Lỗi đọc PDF: $e')));
+  //     }
+  //   }
+  // }
 
-  void _parseDocFile(File file) {
-    try {
-      // DOCX parsing được hỗ trợ tốt hơn thông qua external service
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Đã tải file DOCX. Vui lòng nhập dữ liệu thủ công hoặc sử dụng scan.',
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Lỗi đọc DOC: $e')));
-      }
-    }
-  }
+  // void _parseDocFile(File file) {
+  //   try {
+  //     // DOCX parsing được hỗ trợ tốt hơn thông qua external service
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(
+  //           content: Text(
+  //             'Đã tải file DOCX. Vui lòng nhập dữ liệu thủ công hoặc sử dụng scan.',
+  //           ),
+  //         ),
+  //       );
+  //     }
+  //   } catch (e) {
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(
+  //         context,
+  //       ).showSnackBar(SnackBar(content: Text('Lỗi đọc DOC: $e')));
+  //     }
+  //   }
+  // }
 
   void _applyImportedData(ImportedPhieuNhapKho imported) {
     setState(() {
