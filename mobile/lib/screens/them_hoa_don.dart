@@ -6,6 +6,7 @@ import 'package:mobile/models/chuKy.dart';
 import 'package:mobile/models/product.dart';
 import 'package:mobile/models/thongTinPhieu.dart';
 import 'package:mobile/screens/scan_hoa_don.dart';
+import 'package:mobile/utils/phieu_nhap_kho_file_parser.dart';
 import 'package:mobile/utils/utils.dart';
 
 class ThemHoaDon extends StatefulWidget {
@@ -41,15 +42,13 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
 
   bool get _isEditing => widget.initialInvoice != null;
 
-
-
   @override
   void initState() {
     super.initState();
 
     final invoice = widget.initialInvoice;
     if (invoice == null) {
-      _products.add(_ProductFormData());
+      _products.add(_ProductFormData(onChanged: _updateTongTien));
       return;
     }
 
@@ -71,7 +70,7 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
     _keToanTruongController.text = invoice.chuKy.keToanTruong;
 
     for (final product in invoice.products) {
-      final formData = _ProductFormData();
+      final formData = _ProductFormData(onChanged: _updateTongTien);
       formData.idController.text = product.id;
       formData.nameController.text = product.name;
       formData.maSoController.text = product.maSo;
@@ -82,7 +81,7 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
     }
 
     if (_products.isEmpty) {
-      _products.add(_ProductFormData());
+      _products.add(_ProductFormData(onChanged: _updateTongTien));
     }
   }
 
@@ -141,7 +140,7 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'docx', 'doc'],
+        allowedExtensions: ['pdf', 'docx'],
         allowMultiple: false,
       );
 
@@ -149,13 +148,17 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
         return;
       }
 
-      final file = File(result.files.single.path!);
+      final path = result.files.single.path;
+      if (path == null) {
+        throw const FormatException('Không thể đọc đường dẫn file đã chọn.');
+      }
+      final file = File(path);
       final fileName = result.files.single.name.toLowerCase();
 
-      if (fileName.endsWith('.pdf')) {
-        await _parsePdfFile(file);
-      } else if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
-        _parseDocFile(file);
+      if (fileName.endsWith('.pdf') || fileName.endsWith('.docx')) {
+        final imported = await PhieuNhapKhoFileParser.parse(file);
+        if (!mounted) return;
+        _applyImportedData(imported);
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -165,9 +168,9 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Lỗi: $e')));
       }
     }
   }
@@ -177,15 +180,17 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Đã tải file. Vui lòng nhập dữ liệu thủ công hoặc sử dụng scan.'),
+            content: Text(
+              'Đã tải file. Vui lòng nhập dữ liệu thủ công hoặc sử dụng scan.',
+            ),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi đọc PDF: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Lỗi đọc PDF: $e')));
       }
     }
   }
@@ -196,22 +201,74 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Đã tải file DOCX. Vui lòng nhập dữ liệu thủ công hoặc sử dụng scan.'),
+            content: Text(
+              'Đã tải file DOCX. Vui lòng nhập dữ liệu thủ công hoặc sử dụng scan.',
+            ),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi đọc DOC: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Lỗi đọc DOC: $e')));
       }
     }
   }
 
+  void _applyImportedData(ImportedPhieuNhapKho imported) {
+    setState(() {
+      _soPhieuController.text = imported.soPhieu;
+      _donViController.text = imported.donVi;
+      _boPhanController.text = imported.boPhan;
+      _ngayNhapKho = imported.ngayNhapKho;
+      _noController.text = imported.no;
+      _coController.text = imported.co;
+      _maSoController.text = imported.maSo;
+      _nguoiGiaoController.text = imported.nguoiGiao;
+      _theoController.text = imported.theo;
+      _tongTienController.clear();
+      _soChungTuGocController.text = imported.soChungTuGoc;
+      _nguoiLapPhieuController.text = imported.chuKy.nguoiLapPhieu;
+      _nguoiGiaoHangController.text = imported.chuKy.nguoiGiaoHang;
+      _thuKhoController.text = imported.chuKy.thuKho;
+      _keToanTruongController.text = imported.chuKy.keToanTruong;
+
+      if (imported.products.isNotEmpty) {
+        for (final product in _products) {
+          product.dispose();
+        }
+        _products
+          ..clear()
+          ..addAll(
+            imported.products.map((product) {
+              final data = _ProductFormData(onChanged: _updateTongTien);
+              data.idController.text = product.id;
+              data.nameController.text = product.name;
+              data.maSoController.text = product.maSo;
+              data.thucNhanController.text = product.thucNhan;
+              data.donGiaController.text = product.donGia;
+              return data;
+            }),
+          );
+      }
+    });
+    _updateTongTien();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          imported.products.isEmpty
+              ? 'Đã tự điền thông tin chung. Hãy kiểm tra lại sản phẩm.'
+              : 'Đã tự điền thông tin và ${imported.products.length} sản phẩm.',
+        ),
+      ),
+    );
+  }
+
   void _addProduct() {
     setState(() {
-      _products.add(_ProductFormData());
+      _products.add(_ProductFormData(onChanged: _updateTongTien));
     });
   }
 
@@ -220,6 +277,17 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
       _products[index].dispose();
       _products.removeAt(index);
     });
+    _updateTongTien();
+  }
+
+  void _updateTongTien() {
+    final amounts = _products
+        .map((product) => product.amount)
+        .whereType<double>()
+        .toList();
+    _tongTienController.text = amounts.isEmpty
+        ? ''
+        : formatNumberVn(amounts.fold(0, (sum, amount) => sum + amount));
   }
 
   void _save() {
@@ -359,11 +427,11 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _tongTienController,
-                inputFormatters: [_numberInputFormatter()],
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
+                readOnly: true,
+                decoration: const InputDecoration(
+                  labelText: 'Tổng tiền',
+                  helperText: 'Tự động tính từ sản phẩm',
                 ),
-                decoration: const InputDecoration(labelText: 'Tổng tiền'),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -506,17 +574,18 @@ class _ThemHoaDonState extends State<ThemHoaDon> {
 }
 
 class _ProductFormData {
+  _ProductFormData({this.onChanged}) {
+    thucNhanController.addListener(_updateThanhTien);
+    donGiaController.addListener(_updateThanhTien);
+  }
+
+  final VoidCallback? onChanged;
   final idController = TextEditingController();
   final nameController = TextEditingController();
   final maSoController = TextEditingController();
   final thucNhanController = TextEditingController();
   final donGiaController = TextEditingController();
   final thanhTienController = TextEditingController();
-
-  _ProductFormData() {
-    thucNhanController.addListener(_updateThanhTien);
-    donGiaController.addListener(_updateThanhTien);
-  }
 
   void _updateThanhTien() {
     final soLuong = _parseNumber(thucNhanController.text);
@@ -526,11 +595,15 @@ class _ProductFormData {
       if (thanhTienController.text.isNotEmpty) {
         thanhTienController.clear();
       }
+      onChanged?.call();
       return;
     }
 
     thanhTienController.text = formatNumberVn(soLuong * donGia);
+    onChanged?.call();
   }
+
+  double? get amount => _parseNumber(thanhTienController.text);
 
   double? _parseNumber(String input) {
     var value = input.trim();
