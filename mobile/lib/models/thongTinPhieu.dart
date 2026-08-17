@@ -3,6 +3,7 @@ import 'product.dart';
 
 class ThongTinPhieu {
   const ThongTinPhieu({
+    this.id = '',
     this.soPhieu = '',
     this.donVi = '',
     this.boPhan = '',
@@ -18,6 +19,7 @@ class ThongTinPhieu {
     this.chuKy = const ChuKy(),
   });
 
+  final String id;
   final String soPhieu;
   final String donVi;
   final String boPhan;
@@ -45,6 +47,7 @@ class ThongTinPhieu {
       theo: json['theo'] as String? ?? '',
       tongTien: json['tongTien'] as String? ?? '',
       soChungTuGoc: json['soChungTuGoc'] as String? ?? '',
+      id: json['id'] as String? ?? '',
       products:
           (json['products'] as List<dynamic>?)
               ?.map((e) => Product.fromJson(e))
@@ -56,6 +59,7 @@ class ThongTinPhieu {
 
   Map<String, dynamic> toJson() {
     return {
+
       'soPhieu': soPhieu,
       'donVi': donVi,
       'boPhan': boPhan,
@@ -69,6 +73,7 @@ class ThongTinPhieu {
       'soChungTuGoc': soChungTuGoc,
       'products': products.map((product) => product.toJson()).toList(),
       'chuKy': chuKy.toJson(),
+      'id': id,
     };
   }
 
@@ -86,6 +91,7 @@ class ThongTinPhieu {
     String? soChungTuGoc,
     List<Product>? products,
     ChuKy? chuKy,
+    String? id,
   }) {
     return ThongTinPhieu(
       soPhieu: soPhieu ?? this.soPhieu,
@@ -101,6 +107,7 @@ class ThongTinPhieu {
       soChungTuGoc: soChungTuGoc ?? this.soChungTuGoc,
       products: products ?? this.products,
       chuKy: chuKy ?? this.chuKy,
+      id: id ?? this.id
     );
   }
 }

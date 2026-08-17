@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/data/mock_data.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mobile/cubit/phieu_list/phieu_list_cubit.dart';
+import 'package:mobile/cubit/phieu_list/phieu_list_state.dart';
+import 'package:mobile/data/phieu_repository.dart';
 import 'package:mobile/models/thongTinPhieu.dart';
 import 'package:mobile/screens/chi_tiet_don.dart';
 import 'package:mobile/screens/sua_hoa_don.dart';
@@ -14,7 +17,71 @@ class ListHoaDon extends StatefulWidget {
 }
 
 class _ListHoaDonState extends State<ListHoaDon> {
-  final List<ThongTinPhieu> thongTinPhieuList = [...mockThongTinPhieuList];
+  late final PhieuListCubit _phieuListCubit;
+
+  @override
+  void initState() {
+    super.initState();
+    _phieuListCubit = PhieuListCubit(FirestorePhieuRepository());
+  }
+
+  @override
+  void dispose() {
+    _phieuListCubit.close();
+    super.dispose();
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  Future<void> _addInvoice() async {
+    final newInvoice = await Navigator.push<ThongTinPhieu>(
+      context,
+      MaterialPageRoute(builder: (context) => const ThemHoaDon()),
+    );
+
+    if (!mounted || newInvoice == null) return;
+    _showSnackBar('Đã lưu phiếu ${newInvoice.soPhieu}.');
+  }
+
+  Future<void> _editInvoice(ThongTinPhieu phieu) async {
+    final updated = await Navigator.push<ThongTinPhieu>(
+      context,
+      MaterialPageRoute(builder: (context) => SuaHoaDon(phieu: phieu)),
+    );
+
+    if (!mounted || updated == null) return;
+    _showSnackBar('Đã cập nhật phiếu ${updated.soPhieu}.');
+  }
+
+  Future<void> _deleteInvoice(ThongTinPhieu phieu) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xóa phiếu'),
+        content: Text('Bạn có chắc muốn xóa phiếu ${phieu.soPhieu}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Hủy'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Xóa'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final error = await _phieuListCubit.deletePhieu(phieu);
+    if (!mounted) return;
+    _showSnackBar(error ?? 'Đã xóa phiếu ${phieu.soPhieu}.');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,50 +91,52 @@ class _ListHoaDonState extends State<ListHoaDon> {
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: () async {
-              final newInvoice = await Navigator.push<ThongTinPhieu>(
-                context,
-                MaterialPageRoute(builder: (context) => const ThemHoaDon()),
-              );
-
-              if (newInvoice != null) {
-                setState(() {
-                  thongTinPhieuList.insert(0, newInvoice);
-                });
-              }
-            },
+            onPressed: _addInvoice,
           ),
         ],
       ),
-      body: ListView.builder(
-        itemCount: thongTinPhieuList.length,
-        itemBuilder: (context, index) {
-          return _itemBuilder(
-            context,
-            thongTinPhieuList[index],
-            onEdit: _editInvoice,
+      body: BlocBuilder<PhieuListCubit, PhieuListState>(
+        bloc: _phieuListCubit,
+        builder: (context, state) {
+          if (state.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final errorMessage = state.errorMessage;
+          if (errorMessage != null && state.phieus.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(errorMessage),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: _phieuListCubit.retry,
+                    child: const Text('Thử lại'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          if (state.phieus.isEmpty) {
+            return const Center(child: Text('Chưa có phiếu nào.'));
+          }
+
+          return ListView.builder(
+            itemCount: state.phieus.length,
+            itemBuilder: (context, index) {
+              return _itemBuilder(
+                context,
+                state.phieus[index],
+                onEdit: _editInvoice,
+                onDelete: _deleteInvoice,
+              );
+            },
           );
         },
       ),
     );
-  }
-
-  Future<void> _editInvoice(ThongTinPhieu phieu) async {
-    final updated = await Navigator.push<ThongTinPhieu>(
-      context,
-      MaterialPageRoute(builder: (context) => SuaHoaDon(phieu: phieu)),
-    );
-
-    if (!mounted || updated == null) {
-      return;
-    }
-
-    final index = thongTinPhieuList.indexOf(phieu);
-    if (index != -1) {
-      setState(() {
-        thongTinPhieuList[index] = updated;
-      });
-    }
   }
 }
 
@@ -75,6 +144,7 @@ Widget _itemBuilder(
   BuildContext context,
   ThongTinPhieu phieu, {
   required Future<void> Function(ThongTinPhieu) onEdit,
+  required Future<void> Function(ThongTinPhieu) onDelete,
 }) {
   return Card(
     margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -110,7 +180,7 @@ Widget _itemBuilder(
                           context,
                           phieu,
                           onEdit: onEdit,
-                          height: 260,
+                          onDelete: onDelete,
                         );
                       },
                     );
@@ -141,11 +211,10 @@ Widget _dialogBuilder(
   BuildContext context,
   ThongTinPhieu phieu, {
   required Future<void> Function(ThongTinPhieu) onEdit,
-  double height = 220,
+  required Future<void> Function(ThongTinPhieu) onDelete,
 }) {
   return Center(
     child: Container(
-      // height: height,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -173,7 +242,8 @@ Widget _dialogBuilder(
                 IconButton(
                   icon: const Icon(Icons.delete),
                   onPressed: () {
-                    // Xử lý khi nhấn nút xóa
+                    Navigator.of(context).pop();
+                    onDelete(phieu);
                   },
                 ),
                 IconButton(

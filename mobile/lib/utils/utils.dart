@@ -4,6 +4,33 @@ String formatDate(DateTime date) {
   return '$day/$month/${date.year}';
 }
 
+double? parseNumberVn(String input) {
+  var value = input.trim();
+  if (value.isEmpty) {
+    return null;
+  }
+
+  final hasDot = value.contains('.');
+  final hasComma = value.contains(',');
+
+  if (hasDot && hasComma) {
+    value = value.replaceAll('.', '').replaceAll(',', '.');
+  } else if (hasComma) {
+    value = value.replaceAll(',', '.');
+  } else if (hasDot) {
+    final dotCount = '.'.allMatches(value).length;
+    final decimalPart = value.split('.').last;
+    final looksLikeThousandsSeparator =
+        dotCount > 1 || decimalPart.length == 3;
+
+    if (looksLikeThousandsSeparator) {
+      value = value.replaceAll('.', '');
+    }
+  }
+
+  return double.tryParse(value);
+}
+
 String formatNumberVn(double value) {
   if (!value.isFinite) {
     return '0';

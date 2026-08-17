@@ -11,6 +11,7 @@ class PhieuNhapKhoOcrNormalizer {
     var lines = text
         .replaceAll('\r\n', '\n')
         .replaceAll('\r', '\n')
+        .replaceAll(RegExp(r'[\u200b\u200c\u200d\ufeff\xa0]'), ' ')
         .split('\n')
         .map(
           (line) => line
@@ -23,19 +24,22 @@ class PhieuNhapKhoOcrNormalizer {
     // 1. ST + T -> STT
     lines = _mergeStt(lines);
 
-    // 2. Chuẩn hóa Nợ
+    // 2. Tách 'Nợ: 152 Có: 331' nằm chung 1 dòng
+    lines = _splitNoCoLines(lines);
+
+    // 3. Chuẩn hóa Nợ
     lines = _normalizeNo(lines);
 
-    // 3. Chuẩn hóa Có
+    // 4. Chuẩn hóa Có
     lines = _normalizeCo(lines);
 
-    // 4. Chuẩn hóa Số phiếu
+    // 5. Chuẩn hóa Số phiếu
     lines = _normalizeSoPhieu(lines);
 
-    // 5. Chuẩn hóa số chứng từ gốc
+    // 6. Chuẩn hóa số chứng từ gốc
     lines = _normalizeSoChungTu(lines);
 
-    // 6. Ghép mã sản phẩm bị OCR tách dòng
+    // 7. Ghép mã sản phẩm bị OCR tách dòng
     //
     // VT-0
     // 01
@@ -45,13 +49,13 @@ class PhieuNhapKhoOcrNormalizer {
     // VT-001
     lines = _mergeProductCodes(lines);
 
-    // 7. Ghép tên sản phẩm bị xuống dòng
+    // 8. Ghép tên sản phẩm bị xuống dòng
     lines = _mergeProductNames(lines);
 
-    // 8. Chuẩn hóa header bảng
+    // 9. Chuẩn hóa header bảng
     lines = _normalizeTableHeaders(lines);
 
-    // 9. Chuẩn hóa vùng chữ ký
+    // 10. Chuẩn hóa vùng chữ ký
     lines = _normalizeSignatureSection(lines);
 
     return lines.join('\n');
@@ -95,6 +99,41 @@ class PhieuNhapKhoOcrNormalizer {
   }
 
   // ============================================================
+  // NỢ / CÓ
+  // ============================================================
+
+  /// Tách dòng OCR đọc chung 2 tài khoản, VD:
+  ///
+  /// Nợ: 152 Có: 331
+  ///
+  /// =>
+  ///
+  /// Nợ: 152
+  /// Có: 331
+  static List<String> _splitNoCoLines(
+    List<String> lines,
+  ) {
+    final result = <String>[];
+
+    for (final line in lines) {
+      final match = RegExp(
+        r'^(N[ợơọôo]\s*:\s*\S.*?)(?=\s+-?\s*C[óoô]\s*:)',
+        caseSensitive: false,
+      ).firstMatch(line);
+
+      if (match == null) {
+        result.add(line);
+        continue;
+      }
+
+      result.add(match.group(1)!);
+      result.add(line.substring(match.end).trim());
+    }
+
+    return result;
+  }
+
+  // ============================================================
   // NỢ
   // ============================================================
 
@@ -107,7 +146,7 @@ class PhieuNhapKhoOcrNormalizer {
       final line = lines[i];
 
       final match = RegExp(
-        r'^N[ợơọô]\s*:?\s*(.*)$',
+        r'^N[ợơọôo]\s*:?\s*(.*)$',
         caseSensitive: false,
       ).firstMatch(line);
 
@@ -117,6 +156,20 @@ class PhieuNhapKhoOcrNormalizer {
       }
 
       var value = match.group(1)?.trim() ?? '';
+
+      // 'Nợ:' đứng riêng 1 dòng — regex có thể bắt nhầm chính dấu ':'.
+      if (value == ':') {
+        value = '';
+      }
+
+      // Không có dấu ':' mà giá trị không giống mã tài khoản
+      // (VD: 'Nơi sản xuất...') thì không phải nhãn Nợ — giữ nguyên.
+      if (!line.contains(':') &&
+          value.isNotEmpty &&
+          !_looksLikeAccountCode(value)) {
+        result.add(line);
+        continue;
+      }
 
       // OCR có thể đọc:
       //
@@ -164,6 +217,20 @@ class PhieuNhapKhoOcrNormalizer {
 
       var value = match.group(1)?.trim() ?? '';
 
+      // 'Có:' đứng riêng 1 dòng — regex có thể bắt nhầm chính dấu ':'.
+      if (value == ':') {
+        value = '';
+      }
+
+      // Không có dấu ':' mà giá trị không giống mã tài khoản
+      // (VD: 'Công ty...') thì không phải nhãn Có — giữ nguyên.
+      if (!line.contains(':') &&
+          value.isNotEmpty &&
+          !_looksLikeAccountCode(value)) {
+        result.add(line);
+        continue;
+      }
+
       // OCR:
       //
       // Có:
@@ -202,6 +269,14 @@ class PhieuNhapKhoOcrNormalizer {
     List<String> lines,
   ) {
     return lines.map((line) {
+      // Dòng 'Số chứng từ gốc kèm theo...' không phải số phiếu.
+      if (RegExp(
+        r'chứng\s*từ',
+        caseSensitive: false,
+      ).hasMatch(line)) {
+        return line;
+      }
+
       final match = RegExp(
         r'^S[ốoô]\s*:?\s*(.+)$',
         caseSensitive: false,
@@ -211,7 +286,13 @@ class PhieuNhapKhoOcrNormalizer {
         return line;
       }
 
-      return 'Số: ${match.group(1)!.trim()}';
+      // 'Số:' đứng riêng 1 dòng — regex có thể bắt nhầm chính dấu ':'.
+      final value = match.group(1)!.trim();
+      if (value == ':') {
+        return line;
+      }
+
+      return 'Số: $value';
     }).toList();
   }
 
@@ -349,6 +430,17 @@ class PhieuNhapKhoOcrNormalizer {
 
       // Tìm STT
       if (RegExp(r'^\d+$').hasMatch(current)) {
+        // Dòng số đứng ngay trước 1 dòng sản phẩm hoàn chỉnh
+        // (bắt đầu bằng STT + nội dung, VD: '05' nằm dưới dòng sản phẩm)
+        // là mã sản phẩm bị OCR tách dòng — không phải STT, giữ nguyên.
+        final next = i + 1 < lines.length ? lines[i + 1].trim() : '';
+
+        if (next.isNotEmpty && RegExp(r'^\d+\s+\S').hasMatch(next)) {
+          result.add(current);
+          i++;
+          continue;
+        }
+
         result.add(current);
 
         i++;
@@ -375,6 +467,12 @@ class PhieuNhapKhoOcrNormalizer {
 
           // Header/footer
           if (_isTableBoundary(line)) {
+            break;
+          }
+
+          // Dòng chứa cả mã sản phẩm lẫn số liệu là
+          // 1 dòng sản phẩm hoàn chỉnh — không phải phần tên.
+          if (_looksLikeFullRow(line)) {
             break;
           }
 
@@ -410,6 +508,19 @@ class PhieuNhapKhoOcrNormalizer {
       r'^[A-Z]{1,6}-\d+$',
       caseSensitive: false,
     ).hasMatch(line);
+  }
+
+  /// Dòng chứa cả mã sản phẩm (XXX-NNN) lẫn >= 4 số liệu liên tiếp
+  /// — tức là cả dòng sản phẩm đã nằm gọn trên 1 dòng (dạng layout).
+  static bool _looksLikeFullRow(
+    String line,
+  ) {
+    return RegExp(
+      r'[A-Za-zÀ-ỹĐđ]{1,6}-\d+',
+    ).hasMatch(line) &&
+        RegExp(
+          r'\d[\d.,]*(?:\s+\d[\d.,]*){3}',
+        ).hasMatch(line);
   }
 
   static bool _looksLikeProductName(
@@ -505,7 +616,7 @@ class PhieuNhapKhoOcrNormalizer {
         lower == 'thành tiền' ||
         lower == 'theo chứng từ' ||
         lower == 'thực nhập' ||
-        lower == 'cộng' ||
+        lower.startsWith('cộng') ||
         lower.contains('tổng số tiền') ||
         lower.contains('số chứng từ gốc') ||
         lower.contains('người lập phiếu') ||
